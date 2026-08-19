@@ -1,0 +1,8 @@
+node_modules/
+.env
+*.log
+.DS_Store
+package-lock.json
+
+# Live XP data — created at runtime, never commit
+xp-data.json

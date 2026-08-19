@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lovers Cafe — XP Leaderboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <div class="brand">
+        <span class="cup">☕</span>
+        <div>
+          <h1>XP Leaderboard</h1>
+          <p class="sub" id="botStatus">Connecting…</p>
+        </div>
+      </div>
+      <div class="controls">
+        <select id="serverSelect" aria-label="Select server"></select>
+        <span class="live" id="liveDot" title="Live">● LIVE</span>
+      </div>
+    </header>
+
+    <main id="board" class="board">
+      <div class="empty">Loading leaderboard…</div>
+    </main>
+
+    <footer class="foot">
+      <span id="serverMeta"></span>
+      <span>Auto-refreshes every 10s</span>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

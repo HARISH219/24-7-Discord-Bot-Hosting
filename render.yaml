@@ -1,0 +1,21 @@
+# Render Blueprint — free 24/7 hosting for the bot.
+# Render auto-detects this file when you create a Blueprint from the repo.
+services:
+  - type: web
+    name: lovers-cafe-bot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false # set in the Render dashboard (secret) — never commit this
+      - key: CHANNEL_ID
+        sync: false
+      - key: XP_RESET_USER_IDS
+        sync: false
+      - key: XP_ROLE_ID
+        sync: false
+      - key: LEVEL_UP_ANNOUNCE
+        value: "true"
