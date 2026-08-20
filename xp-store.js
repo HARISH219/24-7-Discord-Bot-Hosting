@@ -3,7 +3,9 @@ const path = require('path');
 
 const DATA_FILE = path.join(__dirname, 'xp-data.json');
 
-// Shape: { [guildId]: { [userId]: { xp, username, avatar } } }
+// Shape: { [guildId]: { [userId]: { chatXp, voiceXp, username, avatar } } }
+// Total XP is always derived as chatXp + voiceXp (never stored separately, so it
+// can't drift). Legacy records that only have `xp` are migrated on read.
 let data = {};
 try {
   if (fs.existsSync(DATA_FILE)) {
@@ -41,34 +43,55 @@ function guildBucket(guildId) {
   return data[guildId];
 }
 
+// Split a stored record into chat/voice, migrating legacy `xp` -> chatXp.
+function split(record) {
+  if (!record) return { chatXp: 0, voiceXp: 0 };
+  const chatXp = record.chatXp ?? record.xp ?? 0; // legacy total counts as chat
+  const voiceXp = record.voiceXp ?? 0;
+  return { chatXp, voiceXp };
+}
+
 function getUser(guildId, userId) {
   const bucket = data[guildId] || {};
-  return bucket[userId] || { xp: 0, username: null, avatar: null };
+  const record = bucket[userId];
+  const { chatXp, voiceXp } = split(record);
+  return {
+    xp: chatXp + voiceXp,
+    chatXp,
+    voiceXp,
+    username: record?.username ?? null,
+    avatar: record?.avatar ?? null,
+  };
 }
 
-function addXp(guildId, userId, amount, meta = {}) {
+// kind = 'chat' | 'voice'. Returns { before, after } as TOTAL xp (for level-up checks).
+function addXp(guildId, userId, amount, meta = {}, kind = 'chat') {
   const bucket = guildBucket(guildId);
-  const current = bucket[userId] || { xp: 0 };
-  const before = current.xp || 0;
-  const after = before + amount;
+  const current = bucket[userId];
+  const { chatXp, voiceXp } = split(current);
+  const before = chatXp + voiceXp;
+  const newChat = kind === 'voice' ? chatXp : chatXp + amount;
+  const newVoice = kind === 'voice' ? voiceXp + amount : voiceXp;
   bucket[userId] = {
-    xp: after,
-    username: meta.username ?? current.username ?? null,
-    avatar: meta.avatar ?? current.avatar ?? null,
+    chatXp: newChat,
+    voiceXp: newVoice,
+    username: meta.username ?? current?.username ?? null,
+    avatar: meta.avatar ?? current?.avatar ?? null,
   };
   scheduleSave();
-  return { before, after };
-}
-
-function setXp(guildId, userId, value) {
-  const bucket = guildBucket(guildId);
-  const current = bucket[userId] || {};
-  bucket[userId] = { ...current, xp: Math.max(0, Math.floor(value)) };
-  scheduleSave();
+  return { before, after: newChat + newVoice };
 }
 
 function resetUser(guildId, userId) {
-  setXp(guildId, userId, 0);
+  const bucket = guildBucket(guildId);
+  const current = bucket[userId] || {};
+  bucket[userId] = {
+    chatXp: 0,
+    voiceXp: 0,
+    username: current.username ?? null,
+    avatar: current.avatar ?? null,
+  };
+  scheduleSave();
 }
 
 function resetGuild(guildId) {
@@ -76,10 +99,21 @@ function resetGuild(guildId) {
   scheduleSave();
 }
 
+// Individual leaderboard (used by /rank ranking). Entries carry chat/voice too.
 function leaderboard(guildId, limit = 10) {
   const bucket = data[guildId] || {};
   return Object.entries(bucket)
-    .map(([userId, v]) => ({ userId, xp: v.xp || 0, username: v.username, avatar: v.avatar || null }))
+    .map(([userId, v]) => {
+      const { chatXp, voiceXp } = split(v);
+      return {
+        userId,
+        xp: chatXp + voiceXp,
+        chatXp,
+        voiceXp,
+        username: v.username,
+        avatar: v.avatar || null,
+      };
+    })
     .sort((a, b) => b.xp - a.xp)
     .slice(0, limit);
 }
@@ -87,7 +121,10 @@ function leaderboard(guildId, limit = 10) {
 function rankOf(guildId, userId) {
   const bucket = data[guildId] || {};
   const sorted = Object.entries(bucket)
-    .map(([id, v]) => ({ id, xp: v.xp || 0 }))
+    .map(([id, v]) => {
+      const { chatXp, voiceXp } = split(v);
+      return { id, xp: chatXp + voiceXp };
+    })
     .sort((a, b) => b.xp - a.xp);
   const idx = sorted.findIndex((e) => e.id === userId);
   return { rank: idx === -1 ? null : idx + 1, total: sorted.length };
@@ -104,4 +141,4 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-module.exports = { getUser, addXp, setXp, resetUser, resetGuild, leaderboard, rankOf, flush };
+module.exports = { getUser, addXp, resetUser, resetGuild, leaderboard, rankOf, flush };

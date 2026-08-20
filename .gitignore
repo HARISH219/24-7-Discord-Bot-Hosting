@@ -6,3 +6,6 @@ package-lock.json
 
 # Live XP data — created at runtime, never commit
 xp-data.json
+
+# Live pairing data — created at runtime, never commit
+pair-data.json

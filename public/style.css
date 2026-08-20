@@ -111,3 +111,58 @@ body {
   display: flex; justify-content: space-between; gap: 12px;
   margin-top: 20px; font-size: 12px; color: var(--muted); flex-wrap: wrap;
 }
+
+/* ---- Couple cards ---- */
+.couple {
+  background: linear-gradient(145deg, rgba(29,23,38,0.9), rgba(16,13,21,0.9));
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 18px;
+  padding: 14px 16px;
+  animation: rise 0.3s ease both;
+}
+.couple.top1 { border-color: rgba(244,114,182,0.45); box-shadow: 0 0 0 1px rgba(244,114,182,0.18) inset; }
+.couple.top2 { border-color: rgba(167,139,250,0.4); }
+.couple.top3 { border-color: rgba(74,222,128,0.3); }
+
+.couple-head { display: flex; align-items: center; gap: 12px; }
+.couple-head .rank { width: auto; min-width: 34px; font-size: 20px; font-weight: 800; color: var(--rose); }
+.couple-title { flex: 1; min-width: 0; font-weight: 800; font-size: 16px; }
+.couple-title .heart { margin: 0 4px; }
+.couple-total { text-align: right; font-weight: 800; font-size: 20px; color: var(--violet); line-height: 1; }
+.couple-total span { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+
+.couple-stats { display: flex; gap: 8px; margin-top: 12px; }
+.couple-stats .stat {
+  flex: 1; text-align: center; border-radius: 12px; padding: 8px 6px;
+  background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.06);
+}
+.couple-stats .stat span { display: block; font-size: 11px; color: var(--muted); }
+.couple-stats .stat b { font-size: 15px; }
+.couple-stats .stat.total { background: rgba(167,139,250,0.12); border-color: rgba(167,139,250,0.25); }
+
+.members { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+@media (max-width: 560px) { .members { grid-template-columns: 1fr; } }
+.member { display: flex; gap: 10px; background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 10px; }
+.member .avatar { width: 40px; height: 40px; }
+.member-body { min-width: 0; flex: 1; }
+.member-top { display: flex; align-items: center; gap: 8px; }
+.member-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.member-level { font-size: 10px; color: var(--violet); background: rgba(167,139,250,0.12); border-radius: 999px; padding: 1px 7px; flex-shrink: 0; }
+.member-xp { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.chips { display: flex; gap: 6px; margin-top: 6px; }
+.chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.05); }
+.chip.chat { color: #7dd3fc; }
+.chip.voice { color: #fca5a5; }
+.contrib-bar { margin-top: 7px; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.contrib-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--rose), var(--violet)); }
+
+/* ---- How XP works ---- */
+.criteria { margin-top: 22px; padding: 18px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.02); }
+.criteria h3 { font-size: 15px; font-weight: 800; }
+.crit-note { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.crit-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+@media (max-width: 560px) { .crit-grid { grid-template-columns: 1fr; } }
+.crit { display: flex; gap: 10px; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 10px 12px; }
+.crit-ico { font-size: 20px; }
+.crit b { display: block; font-size: 13px; }
+.crit span { font-size: 11px; color: var(--muted); }
