@@ -9,3 +9,12 @@ xp-data.json
 
 # Live pairing data — created at runtime, never commit
 pair-data.json
+
+# Organizer credentials (hashed passwords) — NEVER commit
+organizer-data.json
+
+# Audit logs — runtime data
+audit-log.json
+
+# Invite data — runtime
+invite-data.json

@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lovers Cafe — Admin Panel</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0b0910;
+      --card: #17121d;
+      --card2: #1d1726;
+      --rose: #f472b6;
+      --violet: #a78bfa;
+      --online: #4ade80;
+      --gold: #fbbf24;
+      --red: #ef4444;
+      --text: #ece7f2;
+      --muted: #9a90a8;
+      --border: rgba(255,255,255,0.07);
+      --radius: 14px;
+    }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* Login / Password screens */
+    .login-screen, .password-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; }
+    .login-box, .password-box { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 36px 28px; width: 100%; max-width: 380px; text-align: center; }
+    .login-box h1, .password-box h1 { font-size: 22px; margin-bottom: 8px; }
+    .login-box p, .password-box p { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+    .form-group { margin-bottom: 16px; text-align: left; }
+    .form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .form-group input, .form-group select { width: 100%; padding: 11px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; transition: border-color 0.2s; }
+    .form-group input:focus, .form-group select:focus { border-color: var(--violet); }
+    .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.15s; margin-top: 8px; }
+    .btn-primary { background: linear-gradient(135deg, var(--rose), var(--violet)); color: #fff; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-back-leaderboard {
+      display: block; width: 100%; padding: 10px; margin-top: 12px; border-radius: 8px;
+      background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.3);
+      color: var(--violet); font-size: 13px; font-weight: 600; text-decoration: none; text-align: center;
+      transition: all 0.15s;
+    }
+    .btn-back-leaderboard:hover { background: rgba(167,139,250,0.2); border-color: rgba(167,139,250,0.5); }
+    .error-msg { color: var(--red); font-size: 12px; margin-top: 10px; display: none; }
+
+    /* Dashboard layout */
+    .dashboard { display: none; }
+    .dashboard.active { display: flex; min-height: 100vh; }
+    .admin-sidebar {
+      width: 220px; background: linear-gradient(180deg, #13101a, #0d0a12);
+      border-right: 1px solid var(--border); padding: 20px 12px; flex-shrink: 0;
+      display: flex; flex-direction: column; position: fixed; top: 0; left: 0; height: 100vh; overflow-y: auto; z-index: 50;
+    }
+    .admin-sidebar h2 { font-size: 14px; margin-bottom: 4px; }
+    .admin-sidebar .role-badge { font-size: 10px; color: var(--gold); background: rgba(251,191,36,0.1); padding: 2px 8px; border-radius: 999px; display: inline-block; margin-bottom: 16px; }
+    .admin-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .admin-nav button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border: none; border-radius: 8px; background: transparent; color: var(--muted); font-size: 13px; cursor: pointer; text-align: left; }
+    .admin-nav button:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+    .admin-nav button.active { background: rgba(244,114,182,0.12); color: var(--text); font-weight: 600; }
+    .admin-logout { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
+    .admin-logout button { width: 100%; padding: 9px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px; color: var(--red); font-size: 12px; font-weight: 600; cursor: pointer; }
+    .admin-main { margin-left: 220px; flex: 1; padding: 24px 28px; min-width: 0; }
+    .admin-page { display: none; animation: fadeIn 0.2s; }
+    .admin-page.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .admin-page h2 { font-size: 20px; margin-bottom: 16px; }
+
+    /* Tables */
+    .table-wrap { overflow-x: auto; border-radius: var(--radius); }
+    .admin-table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; font-size: 14px; min-width: 500px; }
+    .admin-table th { padding: 14px 14px; text-align: left; font-size: 12px; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); white-space: nowrap; }
+    .admin-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .admin-table tr:last-child td { border-bottom: none; }
+    .admin-table tr:hover td { background: rgba(255,255,255,0.015); }
+    .actions-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    /* User search dropdown */
+    .user-search-wrap { position: relative; }
+    .user-search-input { width: 100%; padding: 11px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; }
+    .user-search-input:focus { border-color: var(--violet); }
+    .user-search-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: var(--card2); border: 1px solid var(--border); border-radius: 8px; max-height: 200px; overflow-y: auto; z-index: 100; display: none; margin-top: 4px; }
+    .user-search-dropdown.open { display: block; }
+    .user-search-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; transition: background 0.1s; }
+    .user-search-item:hover { background: rgba(255,255,255,0.05); }
+    .user-search-item img { width: 32px; height: 32px; border-radius: 50%; }
+    .user-search-item .placeholder-av { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--rose), var(--violet)); }
+    .user-search-item span { font-size: 13px; font-weight: 600; }
+    .user-search-item small { font-size: 11px; color: var(--muted); }
+    .selected-user { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; color: var(--online); }
+    .selected-user img { width: 24px; height: 24px; border-radius: 50%; }
+
+    /* Cards */
+    .admin-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+    .admin-card h3 { font-size: 13px; margin-bottom: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+    /* Forms */
+    .inline-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+    .inline-form .form-group { margin-bottom: 0; flex: 1; min-width: 120px; }
+    .inline-form input, .inline-form select { padding: 9px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 13px; width: 100%; }
+    .btn-sm { padding: 7px 12px; font-size: 11px; font-weight: 600; border: none; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+    .btn-green { background: rgba(74,222,128,0.15); color: var(--online); border: 1px solid rgba(74,222,128,0.3); }
+    .btn-red { background: rgba(239,68,68,0.12); color: var(--red); border: 1px solid rgba(239,68,68,0.25); }
+    .btn-gold { background: rgba(251,191,36,0.12); color: var(--gold); border: 1px solid rgba(251,191,36,0.25); }
+
+    /* Badges */
+    .badge { font-size: 10px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+    .badge-owner { background: rgba(251,191,36,0.15); color: var(--gold); }
+    .badge-admin { background: rgba(167,139,250,0.15); color: var(--violet); }
+    .badge-moderator { background: rgba(74,222,128,0.15); color: var(--online); }
+    .badge-manager { background: rgba(244,114,182,0.15); color: var(--rose); }
+
+    /* Log entries */
+    .log-entry { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12px; }
+    .log-entry:last-child { border-bottom: none; }
+    .log-time { color: var(--muted); margin-right: 8px; }
+    .log-action { font-weight: 600; color: var(--violet); }
+    .log-actor { color: var(--rose); }
+
+    /* Toast */
+    .toast { position: fixed; top: 16px; right: 16px; background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px; font-size: 13px; z-index: 9999; animation: slideIn 0.3s; max-width: 90vw; }
+    .toast.success { border-color: rgba(74,222,128,0.4); color: var(--online); }
+    .toast.error { border-color: rgba(239,68,68,0.4); color: var(--red); }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; } }
+
+    /* Custom Confirm Modal */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center; padding: 16px; }
+    .modal-overlay.active { display: flex; }
+    .modal-box { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px 24px; width: 100%; max-width: 360px; text-align: center; animation: fadeIn 0.2s; }
+    .modal-box h3 { font-size: 18px; margin-bottom: 10px; }
+    .modal-box p { font-size: 14px; color: var(--muted); margin-bottom: 24px; line-height: 1.5; }
+    .modal-actions { display: flex; gap: 10px; justify-content: center; }
+    .modal-actions button { padding: 10px 24px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; }
+    .modal-cancel { background: rgba(255,255,255,0.06); color: var(--muted); border: 1px solid var(--border) !important; }
+    .modal-confirm { background: rgba(239,68,68,0.2); color: var(--red); border: 1px solid rgba(239,68,68,0.4) !important; }
+    .modal-confirm:hover { background: rgba(239,68,68,0.3); }
+
+    /* Back link - highlighted button style */
+    .back-link-btn {
+      display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; margin-bottom: 14px;
+      border-radius: 8px; background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.25);
+      color: var(--violet); font-size: 13px; font-weight: 600; text-decoration: none; transition: all 0.15s;
+    }
+    .back-link-btn:hover { background: rgba(167,139,250,0.2); border-color: rgba(167,139,250,0.4); }
+
+    .back-link-mobile {
+      display: none; margin-bottom: 14px; padding: 10px 14px;
+      border-radius: 8px; background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.25);
+      color: var(--violet); font-size: 13px; font-weight: 600; text-decoration: none; text-align: center;
+    }
+    .back-link-mobile:hover { background: rgba(167,139,250,0.2); }
+
+    /* ====== MOBILE ====== */
+    @media (max-width: 768px) {
+      .admin-sidebar {
+        width: 100%; position: fixed; bottom: 0; left: 0; top: auto;
+        height: 62px; border-right: none; border-top: 1px solid var(--border);
+        padding: 0; z-index: 50; flex-direction: row; align-items: center;
+        background: rgba(13,10,18,0.98); backdrop-filter: blur(12px);
+      }
+      .admin-sidebar h2, .admin-sidebar .role-badge, .admin-logout, .admin-sidebar .back-link-btn { display: none; }
+      .back-link-mobile { display: block; }
+      .admin-nav { flex-direction: row; flex-wrap: nowrap; gap: 0; width: 100%; height: 100%; justify-content: space-around; align-items: center; }
+      .admin-nav button {
+        flex-direction: column; gap: 3px; padding: 8px 6px; font-size: 10px;
+        align-items: center; justify-content: center; text-align: center;
+        min-width: 60px; border-radius: 0;
+      }
+      .admin-nav button.active { background: rgba(244,114,182,0.12); border-radius: 10px; }
+      .dashboard.active { flex-direction: column; }
+      .admin-main { margin-left: 0; padding: 16px 12px 80px; }
+      .admin-page h2 { font-size: 18px; }
+      .inline-form { flex-direction: column; gap: 10px; }
+      .inline-form .form-group { min-width: 100%; }
+      .admin-table { font-size: 12px; }
+      .admin-table th, .admin-table td { padding: 8px 8px; }
+      .btn-sm { padding: 7px 10px; font-size: 10px; }
+      .admin-card { padding: 14px; }
+      .actions-cell { gap: 4px; }
+      .login-box, .password-box { padding: 28px 20px; }
+    }
+
+    @media (max-width: 480px) {
+      .admin-nav button { font-size: 9px; min-width: 50px; padding: 6px 4px; }
+      .admin-page h2 { font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- CONFIRM MODAL -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal-box">
+      <h3 id="modalTitle">Are you sure?</h3>
+      <p id="modalMsg">This action cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="modalCancel">Cancel</button>
+        <button class="modal-confirm" id="modalConfirm">Yes, Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOGIN -->
+  <div class="login-screen" id="loginScreen">
+    <div class="login-box">
+      <h1>🔐 Admin Panel</h1>
+      <p>Lovers Cafe Event Management</p>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="loginUser" autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPass" autocomplete="current-password" />
+      </div>
+      <button class="btn btn-primary" id="loginBtn">LOGIN</button>
+      <a href="/" class="btn-back-leaderboard">← Back to Leaderboard</a>
+      <p class="error-msg" id="loginError"></p>
+    </div>
+  </div>
+
+  <!-- FORCE PASSWORD CHANGE -->
+  <div class="password-screen" id="passwordScreen" style="display:none">
+    <div class="password-box">
+      <h1>🔑 Change Password</h1>
+      <p>For security, you must change your temporary password before continuing.</p>
+      <div class="form-group">
+        <label>New Password</label>
+        <input type="password" id="newPass1" />
+      </div>
+      <div class="form-group">
+        <label>Confirm New Password</label>
+        <input type="password" id="newPass2" />
+      </div>
+      <button class="btn btn-primary" id="changePassBtn">CHANGE PASSWORD</button>
+      <p class="error-msg" id="passError"></p>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="dashboard" id="dashboard">
+    <aside class="admin-sidebar">
+      <a href="/" class="back-link-btn">← Back to Leaderboard</a>
+      <h2 id="adminName">Admin</h2>
+      <span class="role-badge" id="adminRole">ROLE</span>
+      <nav class="admin-nav" id="adminNav"></nav>
+      <div class="admin-logout">
+        <button id="logoutBtn">Logout</button>
+      </div>
+    </aside>
+    <main class="admin-main" id="adminMain">
+      <a href="/" class="back-link-mobile">← Back to Leaderboard</a>
+      <div class="admin-page active" id="ap-overview">
+        <h2>Overview</h2>
+        <div id="overviewContent">Loading...</div>
+      </div>
+      <div class="admin-page" id="ap-organizers">
+        <h2>Organizer Accounts</h2>
+        <div id="organizersContent"></div>
+      </div>
+      <div class="admin-page" id="ap-xp">
+        <h2>XP Management</h2>
+        <div id="xpContent"></div>
+      </div>
+      <div class="admin-page" id="ap-couples">
+        <h2>Duo Management</h2>
+        <div id="couplesContent"></div>
+      </div>
+      <div class="admin-page" id="ap-logs">
+        <h2>Audit Logs</h2>
+        <div id="logsContent"></div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const API = '/api/admin';
+    let token = localStorage.getItem('admin_token');
+    let currentUser = null;
+    const $ = (id) => document.getElementById(id);
+
+    // ---- Custom Confirm Modal ----
+    let modalResolve = null;
+    function showConfirm(title, msg, confirmText = 'Yes, Delete') {
+      $('modalTitle').textContent = title;
+      $('modalMsg').textContent = msg;
+      $('modalConfirm').textContent = confirmText;
+      $('confirmModal').classList.add('active');
+      return new Promise((resolve) => { modalResolve = resolve; });
+    }
+    $('modalCancel').onclick = () => { $('confirmModal').classList.remove('active'); if (modalResolve) modalResolve(false); };
+    $('modalConfirm').onclick = () => { $('confirmModal').classList.remove('active'); if (modalResolve) modalResolve(true); };
+
+    // ---- API helper ----
+    async function api(method, path, body) {
+      const opts = { method, headers: { 'Content-Type': 'application/json' } };
+      if (token) opts.headers['Authorization'] = `Bearer ${token}`;
+      if (body) opts.body = JSON.stringify(body);
+      const res = await fetch(API + path, opts);
+      const data = await res.json();
+      if (res.status === 401) { logout(); throw new Error('Unauthorized'); }
+      return data;
+    }
+
+    function toast(msg, type = 'success') {
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 3500);
+    }
+
+    function roleBadge(role) { return `<span class="badge badge-${role.toLowerCase()}">${role}</span>`; }
+    function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+
+    // ---- Auth ----
+    $('loginBtn').onclick = async () => {
+      const username = $('loginUser').value.trim();
+      const password = $('loginPass').value;
+      if (!username || !password) return showErr('loginError', 'Enter both fields.');
+      try {
+        const data = await api('POST', '/auth/login', { username, password });
+        if (!data.success) return showErr('loginError', data.error);
+        token = data.token; localStorage.setItem('admin_token', token);
+        currentUser = data.user; afterLogin();
+      } catch (e) { showErr('loginError', 'Login failed.'); }
+    };
+    $('loginPass').onkeydown = (e) => { if (e.key === 'Enter') $('loginBtn').click(); };
+    $('loginUser').onkeydown = (e) => { if (e.key === 'Enter') $('loginBtn').click(); };
+
+    $('changePassBtn').onclick = async () => {
+      const p1 = $('newPass1').value, p2 = $('newPass2').value;
+      if (!p1 || p1.length < 6) return showErr('passError', 'Password must be at least 6 characters.');
+      if (p1 !== p2) return showErr('passError', 'Passwords do not match.');
+      try {
+        const data = await api('POST', '/auth/change-password', { newPassword: p1 });
+        if (!data.success) return showErr('passError', data.error);
+        token = data.token; localStorage.setItem('admin_token', token);
+        currentUser = data.user; showDashboard();
+      } catch (e) { showErr('passError', 'Failed.'); }
+    };
+
+    $('logoutBtn').onclick = logout;
+    function logout() { token = null; currentUser = null; localStorage.removeItem('admin_token'); $('loginScreen').style.display = ''; $('passwordScreen').style.display = 'none'; $('dashboard').classList.remove('active'); }
+    function showErr(id, msg) { const el = $(id); el.textContent = msg; el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 4000); }
+
+    async function afterLogin() {
+      $('loginScreen').style.display = 'none';
+      if (currentUser.mustChangePassword) { $('passwordScreen').style.display = ''; return; }
+      showDashboard();
+    }
+    function showDashboard() {
+      $('passwordScreen').style.display = 'none'; $('loginScreen').style.display = 'none';
+      $('dashboard').classList.add('active');
+      $('adminName').textContent = currentUser.displayName || currentUser.username;
+      $('adminRole').textContent = currentUser.role;
+      buildNav(); loadOverview();
+    }
+
+    async function init() {
+      if (!token) return;
+      try { const data = await api('GET', '/auth/me'); if (!data.success) { logout(); return; } currentUser = data.user; afterLogin(); } catch { logout(); }
+    }
+
+    // ---- Nav ----
+    const PAGES = {
+      overview: { label: '📊', sublabel: 'Overview', perm: 'dashboard.view' },
+      organizers: { label: '👤', sublabel: 'Organizers', perm: 'organizers.view' },
+      xp: { label: '⭐', sublabel: 'XP', perm: 'xp.manage' },
+      couples: { label: '💞', sublabel: 'Duos', perm: 'couples.view' },
+      logs: { label: '📋', sublabel: 'Logs', perm: 'logs.view' },
+    };
+    let permissions = [];
+    function buildNav() {
+      const rolePerms = {
+        OWNER: ['dashboard.view','organizers.view','xp.manage','couples.view','logs.view'],
+        ADMIN: ['dashboard.view','organizers.view','logs.view'],
+        MODERATOR: ['dashboard.view','xp.manage'],
+        MANAGER: ['dashboard.view','couples.view'],
+      };
+      permissions = rolePerms[currentUser.role] || [];
+      const nav = $('adminNav'); nav.innerHTML = '';
+      for (const [key, cfg] of Object.entries(PAGES)) {
+        if (!permissions.includes(cfg.perm)) continue;
+        const btn = document.createElement('button');
+        btn.innerHTML = `<span style="font-size:18px">${cfg.label}</span><span>${cfg.sublabel}</span>`;
+        btn.dataset.page = key;
+        btn.onclick = () => switchAdminPage(key);
+        nav.appendChild(btn);
+      }
+      const first = nav.querySelector('button');
+      if (first) { first.classList.add('active'); switchAdminPage(first.dataset.page); }
+      // Add logout button to nav (visible on mobile as part of bottom tab bar)
+      const logoutBtn2 = document.createElement('button');
+      logoutBtn2.innerHTML = '<span style="font-size:18px">🚪</span><span>Logout</span>';
+      logoutBtn2.style.color = 'var(--red)';
+      logoutBtn2.onclick = logout;
+      nav.appendChild(logoutBtn2);
+    }
+    function switchAdminPage(page) {
+      document.querySelectorAll('.admin-nav button').forEach(b => b.classList.remove('active'));
+      document.querySelector(`.admin-nav button[data-page="${page}"]`)?.classList.add('active');
+      document.querySelectorAll('.admin-page').forEach(p => p.classList.remove('active'));
+      $(`ap-${page}`)?.classList.add('active');
+      if (page === 'overview') loadOverview();
+      if (page === 'organizers') loadOrganizers();
+      if (page === 'xp') loadXp();
+      if (page === 'couples') loadCouples();
+      if (page === 'logs') loadLogs();
+    }
+
+    // ---- Overview ----
+    async function loadOverview() {
+      try {
+        const stats = await fetch('/api/stats').then(r => r.json());
+        const guild = stats.guilds?.find(g => g.id === '1289894372887760991');
+        $('overviewContent').innerHTML = `
+          <div class="admin-card"><h3>Bot Status</h3><p>${stats.ready ? '🟢 Online' : '🔴 Offline'} ${stats.bot?.tag || ''}</p></div>
+          <div class="admin-card"><h3>Server</h3><p>${guild?.name || 'Not found'} — ${guild?.memberCount || 0} members, ${guild?.pairCount || 0} duos</p></div>
+          <div class="admin-card"><h3>Your Role</h3><p>${roleBadge(currentUser.role)} ${currentUser.displayName}</p></div>`;
+      } catch { $('overviewContent').innerHTML = '<p>Could not load.</p>'; }
+    }
+
+    // ---- Organizers ----
+    async function loadOrganizers() {
+      try {
+        const data = await api('GET', '/organizers');
+        if (!data.success) { $('organizersContent').innerHTML = `<p>${data.error}</p>`; return; }
+        let html = `<div class="admin-card"><h3>Create New Organizer</h3>
+          <div class="inline-form">
+            <div class="form-group"><label>Username</label><input id="newOrgUser" placeholder="username" /></div>
+            <div class="form-group"><label>Password</label><input id="newOrgPass" placeholder="temp password" /></div>
+            <div class="form-group"><label>Role</label><select id="newOrgRole">
+              ${currentUser.role === 'OWNER' ? '<option>OWNER</option><option>ADMIN</option>' : ''}
+              <option>MODERATOR</option><option>MANAGER</option>
+            </select></div>
+            <button class="btn-sm btn-green" onclick="createOrganizer()">+ Create</button>
+          </div></div>
+          <div class="table-wrap"><table class="admin-table"><thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>`;
+        for (const org of data.organizers) {
+          const isMe = org.id === currentUser.id;
+          html += `<tr>
+            <td style="font-size:15px"><b>${esc(org.displayName||org.username)}</b><br><small style="color:var(--muted);font-size:12px">${esc(org.username)}</small></td>
+            <td>${roleBadge(org.role)}</td>
+            <td style="font-size:14px">${org.disabled ? '<span style="color:var(--red)">Disabled</span>' : '<span style="color:var(--online)">Active</span>'}</td>
+            <td><div class="actions-cell">
+              ${!isMe ? `<button class="btn-sm btn-gold" onclick="resetOrgPass('${org.id}')">Reset PW</button>` : ''}
+              ${!isMe ? `<button class="btn-sm btn-red" onclick="toggleOrg('${org.id}',${!org.disabled})">${org.disabled?'Enable':'Disable'}</button>` : ''}
+              ${!isMe ? `<button class="btn-sm btn-red" onclick="deleteOrg('${org.id}','${esc(org.username)}')">Delete</button>` : '<small style="color:var(--muted)">You</small>'}
+            </div></td></tr>`;
+        }
+        html += '</tbody></table></div>';
+        $('organizersContent').innerHTML = html;
+      } catch { $('organizersContent').innerHTML = '<p>Could not load.</p>'; }
+    }
+    async function createOrganizer() {
+      const username = $('newOrgUser').value.trim(), password = $('newOrgPass').value, role = $('newOrgRole').value;
+      if (!username||!password) return toast('Fill all fields','error');
+      const data = await api('POST','/organizers',{username,password,role});
+      if (data.success) { toast('Account created!'); loadOrganizers(); } else toast(data.error,'error');
+    }
+    async function resetOrgPass(id) {
+      const pw = prompt('Enter new temporary password (min 6 chars):');
+      if (!pw||pw.length<6) return;
+      const data = await api('POST',`/organizers/${id}/reset-password`,{newPassword:pw});
+      if (data.success) toast('Password reset.'); else toast(data.error,'error');
+    }
+    async function toggleOrg(id, disable) {
+      const data = await api('PUT',`/organizers/${id}`,{disabled:disable});
+      if (data.success) { toast(disable?'Disabled.':'Enabled.'); loadOrganizers(); } else toast(data.error,'error');
+    }
+    async function deleteOrg(id, username) {
+      const yes = await showConfirm('Delete Account', `Are you sure you want to delete "${username}"? This cannot be undone.`, 'Yes, Delete');
+      if (!yes) return;
+      const data = await api('DELETE',`/organizers/${id}`);
+      if (data.success) { toast('Account deleted.'); loadOrganizers(); } else toast(data.error,'error');
+    }
+
+    // ---- XP ----
+    let xpMembers = [];
+    async function loadXp() {
+      try {
+        const data = await api('GET','/xp/members');
+        if (!data.success) { $('xpContent').innerHTML=`<p>${data.error}</p>`; return; }
+        xpMembers = data.members;
+        let html = `<div class="admin-card"><h3>Add / Remove XP</h3>
+          <div class="inline-form">
+            <div class="form-group"><label>Search User</label>
+              <div class="user-search-wrap">
+                <input class="user-search-input" id="xpUserSearch" placeholder="Type a name to search..." oninput="filterXpUsers()" onfocus="filterXpUsers()" />
+                <div class="user-search-dropdown" id="xpUserDropdown"></div>
+              </div>
+              <div class="selected-user" id="xpSelectedUser"></div>
+              <input type="hidden" id="xpUserId" />
+            </div>
+            <div class="form-group"><label>Amount</label><input id="xpAmount" type="number" placeholder="100" style="font-size:15px;padding:12px 14px" /></div>
+            <div class="form-group"><label>Reason</label><input id="xpReason" placeholder="optional" style="font-size:15px;padding:12px 14px" /></div>
+            <button class="btn-sm btn-green" style="padding:10px 18px;font-size:13px" onclick="addXp()">+ Add</button>
+            <button class="btn-sm btn-red" style="padding:10px 18px;font-size:13px" onclick="removeXp()">- Remove</button>
+          </div></div>
+        <div class="table-wrap"><table class="admin-table"><thead><tr><th>#</th><th>Member</th><th>Lv</th><th>XP</th><th>Chat</th><th>Voice</th><th></th></tr></thead><tbody>`;
+        data.members.forEach((m,i) => {
+          const av = m.avatar ? `<img src="${esc(m.avatar)}" style="width:28px;height:28px;border-radius:50%;vertical-align:middle;margin-right:6px">` : '';
+          html += `<tr><td>${i+1}</td><td>${av}<b>${esc(m.username||'Member')}</b><br><small style="color:var(--muted)">${m.id}</small></td><td>${m.level}</td><td>${m.xp.toLocaleString()}</td><td style="color:#7dd3fc">${m.chatXp.toLocaleString()}</td><td style="color:#fca5a5">${m.voiceXp.toLocaleString()}</td><td><button class="btn-sm btn-red" onclick="resetUserXp('${m.id}','${esc(m.username)}')">Reset</button></td></tr>`;
+        });
+        html += '</tbody></table></div>';
+        $('xpContent').innerHTML = html;
+      } catch { $('xpContent').innerHTML = '<p>Could not load.</p>'; }
+    }
+    function filterXpUsers() {
+      const q = $('xpUserSearch').value.toLowerCase();
+      const dd = $('xpUserDropdown');
+      if (!q) { dd.classList.remove('open'); return; }
+      const matches = xpMembers.filter(m => (m.username||'').toLowerCase().includes(q) || m.id.includes(q)).slice(0,8);
+      if (!matches.length) { dd.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:12px">No results</div>'; dd.classList.add('open'); return; }
+      dd.innerHTML = matches.map(m => `<div class="user-search-item" onclick="selectXpUser('${m.id}','${esc(m.username)}','${esc(m.avatar||'')}')">
+        ${m.avatar ? `<img src="${esc(m.avatar)}">` : '<div class="placeholder-av"></div>'}
+        <div><span>${esc(m.username||'Member')}</span><br><small>${m.id}</small></div>
+      </div>`).join('');
+      dd.classList.add('open');
+    }
+    function selectXpUser(id, name, avatar) {
+      $('xpUserId').value = id;
+      $('xpUserSearch').value = name;
+      $('xpUserDropdown').classList.remove('open');
+      $('xpSelectedUser').innerHTML = `${avatar ? `<img src="${avatar}">` : ''} ${name} <small style="color:var(--muted)">${id}</small>`;
+    }
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.user-search-wrap')) {
+        document.querySelectorAll('.user-search-dropdown').forEach(d => d.classList.remove('open'));
+      }
+    });
+    async function addXp() {
+      const userId=$('xpUserId').value.trim(),amount=$('xpAmount').value,reason=$('xpReason').value;
+      if (!userId||!amount) return toast('User ID and amount required','error');
+      const data = await api('POST','/xp/add',{userId,amount:parseInt(amount),reason});
+      if (data.success) { toast(data.message); loadXp(); } else toast(data.error,'error');
+    }
+    async function removeXp() {
+      const userId=$('xpUserId').value.trim(),amount=$('xpAmount').value,reason=$('xpReason').value;
+      if (!userId||!amount) return toast('User ID and amount required','error');
+      const data = await api('POST','/xp/remove',{userId,amount:parseInt(amount),reason});
+      if (data.success) { toast(data.message); loadXp(); } else toast(data.error,'error');
+    }
+    async function resetUserXp(userId, username) {
+      const yes = await showConfirm('Reset XP', `Are you sure you want to reset ${username || userId}'s XP to 0?`, 'Yes, Reset');
+      if (!yes) return;
+      const data = await api('POST','/xp/reset-user',{userId});
+      if (data.success) { toast('XP reset.'); loadXp(); } else toast(data.error,'error');
+    }
+
+    // ---- Couples ----
+    async function loadCouples() {
+      try {
+        const data = await api('GET','/couples');
+        if (!data.success) { $('couplesContent').innerHTML=`<p>${data.error}</p>`; return; }
+        // Also load members for search
+        let members = xpMembers;
+        if (!members.length) { try { const md = await api('GET','/xp/members'); if(md.success) members = md.members; xpMembers = members; } catch{} }
+        let html = `<div class="admin-card"><h3>Send Pair Request</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Search by name, username, or paste a Discord ID. Both users must accept in Discord.</p>
+          <div class="inline-form">
+            <div class="form-group"><label>User 1</label>
+              <div class="user-search-wrap">
+                <input class="user-search-input" id="pairSearch1" placeholder="Name, username, or ID..." oninput="filterPairUsers(1)" onfocus="filterPairUsers(1)" />
+                <div class="user-search-dropdown" id="pairDropdown1"></div>
+              </div>
+              <div class="selected-user" id="pairSelected1"></div>
+              <input type="hidden" id="pairId1" />
+            </div>
+            <div class="form-group"><label>User 2</label>
+              <div class="user-search-wrap">
+                <input class="user-search-input" id="pairSearch2" placeholder="Name, username, or ID..." oninput="filterPairUsers(2)" onfocus="filterPairUsers(2)" />
+                <div class="user-search-dropdown" id="pairDropdown2"></div>
+              </div>
+              <div class="selected-user" id="pairSelected2"></div>
+              <input type="hidden" id="pairId2" />
+            </div>
+            <button class="btn-sm btn-green" style="padding:10px 18px;font-size:13px" onclick="sendPairRequest()">💞 Send Request</button>
+          </div></div>
+          <h3 style="margin:16px 0 10px;font-size:16px">Active Duos</h3>`;
+        if (!data.couples.length) { html += '<p style="color:var(--muted)">No active duos.</p>'; }
+        else {
+          html += '<div class="table-wrap"><table class="admin-table"><thead><tr><th>#</th><th>Partner 1</th><th>Partner 2</th><th>XP</th><th></th></tr></thead><tbody>';
+          data.couples.forEach((c,i) => {
+            const av1 = c.members[0].avatar ? `<img src="${esc(c.members[0].avatar)}" style="width:28px;height:28px;border-radius:50%;vertical-align:middle;margin-right:6px">` : '';
+            const av2 = c.members[1].avatar ? `<img src="${esc(c.members[1].avatar)}" style="width:28px;height:28px;border-radius:50%;vertical-align:middle;margin-right:6px">` : '';
+            html += `<tr><td>${i+1}</td><td>${av1}<b>${esc(c.members[0].username)}</b></td><td>${av2}<b>${esc(c.members[1].username)}</b></td><td>${c.totalXp.toLocaleString()}</td><td>${currentUser.role === 'OWNER' ? `<button class="btn-sm btn-red" onclick="unpairCouple('${c.members[0].id}','${esc(c.members[0].username)}','${esc(c.members[1].username)}')">💔 Unpair</button>` : ''}</td></tr>`;
+          });
+          html += '</tbody></table></div>';
+        }
+        $('couplesContent').innerHTML = html;
+      } catch { $('couplesContent').innerHTML = '<p>Could not load.</p>'; }
+    }
+    function filterPairUsers(num) {
+      const q = $(`pairSearch${num}`).value.toLowerCase();
+      const dd = $(`pairDropdown${num}`);
+      if (!q) { dd.classList.remove('open'); return; }
+      const matches = xpMembers.filter(m => (m.username||'').toLowerCase().includes(q) || m.id.includes(q)).slice(0,8);
+      if (!matches.length) { dd.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:12px">No results</div>'; dd.classList.add('open'); return; }
+      dd.innerHTML = matches.map(m => `<div class="user-search-item" onclick="selectPairUser(${num},'${m.id}','${esc(m.username)}','${esc(m.avatar||'')}')">
+        ${m.avatar ? `<img src="${esc(m.avatar)}">` : '<div class="placeholder-av"></div>'}
+        <div><span>${esc(m.username||'Member')}</span><br><small>${m.id}</small></div>
+      </div>`).join('');
+      dd.classList.add('open');
+    }
+    function selectPairUser(num, id, name, avatar) {
+      $(`pairId${num}`).value = id;
+      $(`pairSearch${num}`).value = name;
+      $(`pairDropdown${num}`).classList.remove('open');
+      $(`pairSelected${num}`).innerHTML = `${avatar ? `<img src="${avatar}" style="width:24px;height:24px;border-radius:50%">` : ''} ${name}`;
+    }
+    async function sendPairRequest() {
+      // Use hidden ID if selected from dropdown, otherwise use the typed text (name/ID)
+      const userId1 = $('pairId1').value.trim() || $('pairSearch1').value.trim();
+      const userId2 = $('pairId2').value.trim() || $('pairSearch2').value.trim();
+      if (!userId1||!userId2) return toast('Enter both users (name or ID)','error');
+      const data = await api('POST','/couples/pair-via-discord',{userId1,userId2});
+      if (data.success) toast(data.message); else toast(data.error,'error');
+    }
+    async function unpairCouple(userId, name1, name2) {
+      const yes = await showConfirm('Unpair Duo', `Are you sure you want to unpair ${name1} and ${name2}? Their XP will be preserved.`, 'Yes, Unpair');
+      if (!yes) return;
+      const data = await api('POST','/couples/unpair',{userId});
+      if (data.success) { toast(data.message); loadCouples(); } else toast(data.error,'error');
+    }
+
+    // ---- Logs ----
+    async function loadLogs() {
+      try {
+        const data = await api('GET','/logs?limit=50');
+        if (!data.success) { $('logsContent').innerHTML=`<p>${data.error}</p>`; return; }
+        if (!data.entries.length) { $('logsContent').innerHTML='<p style="color:var(--muted)">No logs yet.</p>'; return; }
+        let html = '<div class="admin-card" style="max-height:60vh;overflow-y:auto">';
+        for (const e of data.entries) {
+          const time = new Date(e.timestamp).toLocaleString();
+          let detail = '';
+          if (e.details) {
+            if (e.details.amount) detail += ` [${e.details.amount} XP]`;
+            if (e.details.reason) detail += ` "${e.details.reason}"`;
+            if (e.details.role) detail += ` [${e.details.role}]`;
+            if (e.details.source) detail += ` (${e.details.source})`;
+          }
+          html += `<div class="log-entry"><span class="log-time">${time}</span> <span class="log-actor">${esc(e.actor)}</span> <span class="log-action">${esc(e.action)}</span>${e.target?` → <b>${esc(e.target)}</b>`:''}${detail ? `<span style="color:var(--gold)"> ${detail}</span>` : ''} <small style="color:var(--muted)">[${e.result}]</small></div>`;
+        }
+        html += '</div>';
+        $('logsContent').innerHTML = html;
+      } catch { $('logsContent').innerHTML = '<p>Could not load.</p>'; }
+    }
+
+    init();
+  </script>
+</body>
+</html>

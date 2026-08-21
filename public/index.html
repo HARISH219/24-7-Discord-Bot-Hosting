@@ -3,35 +3,97 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lovers Cafe — Couple XP Leaderboard</title>
+  <title>Lovers Cafe — Duo Leaderboard</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="wrap">
-    <header class="topbar">
-      <div class="brand">
-        <span class="cup">☕</span>
-        <div>
-          <h1>Couple XP Leaderboard</h1>
-          <p class="sub" id="botStatus">Connecting…</p>
+  <div class="app">
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-icon">☕</span>
+        <div class="brand-text">
+          <h1>Lovers Cafe</h1>
+          <p class="brand-sub" id="botTag">Connecting...</p>
         </div>
       </div>
-      <div class="controls">
-        <select id="serverSelect" aria-label="Select server"></select>
-        <span class="live" id="liveDot" title="Live">● LIVE</span>
+
+      <div class="nav-links">
+        <button class="nav-btn active" data-page="leaderboard">
+          <span class="nav-icon">🏆</span>
+          <span>Duo Leaderboard</span>
+        </button>
+        <button class="nav-btn" data-page="pairs">
+          <span class="nav-icon">💞</span>
+          <span>Duos</span>
+        </button>
+        <button class="nav-btn" data-page="members">
+          <span class="nav-icon">👥</span>
+          <span>Members</span>
+        </button>
       </div>
+
+      <div class="sidebar-footer">
+        <a href="/admin" class="admin-login-btn">🔐 Admin Login</a>
+        <div class="bot-status">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Offline</span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Mobile Header -->
+    <header class="mobile-header">
+      <button class="menu-btn" id="menuBtn" aria-label="Toggle menu">☰</button>
+      <span class="mobile-title">☕ Lovers Cafe</span>
+      <span class="live-badge" id="mobileBadge">● LIVE</span>
     </header>
 
-    <main id="board" class="board">
-      <div class="empty">Loading couples…</div>
+    <!-- Mobile Tab Bar -->
+    <nav class="mobile-tabs" id="mobileTabs">
+      <button class="tab-btn active" data-page="leaderboard">🏆<span>Leaderboard</span></button>
+      <button class="tab-btn" data-page="pairs">💞<span>Duos</span></button>
+      <button class="tab-btn" data-page="members">👥<span>Members</span></button>
+      <a href="/admin" class="tab-btn">🔐<span>Admin</span></a>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="content" id="content">
+      <!-- Leaderboard Page -->
+      <section class="page active" id="page-leaderboard">
+        <div class="page-header">
+          <h2>Duo Leaderboard</h2>
+          <p class="page-desc">Ranked by combined XP of both partners</p>
+        </div>
+        <div class="board" id="leaderboardContent">
+          <div class="empty">Loading leaderboard...</div>
+        </div>
+        <section class="criteria" id="criteria"></section>
+      </section>
+
+      <!-- Duos Page -->
+      <section class="page" id="page-pairs">
+        <div class="page-header">
+          <h2>Duos</h2>
+          <p class="page-desc">All current duos and their combined stats</p>
+        </div>
+        <div class="pairs-grid" id="pairsContent">
+          <div class="empty">Loading duos...</div>
+        </div>
+      </section>
+
+      <!-- Members Page -->
+      <section class="page" id="page-members">
+        <div class="page-header">
+          <h2>Members</h2>
+          <p class="page-desc">All members ranked by individual XP</p>
+        </div>
+        <div class="members-table-wrap" id="membersContent">
+          <div class="empty">Loading members...</div>
+        </div>
+        <div class="invite-bonus-note" id="inviteBonusNote"></div>
+      </section>
     </main>
-
-    <section id="criteria" class="criteria"></section>
-
-    <footer class="foot">
-      <span id="serverMeta"></span>
-      <span>Auto-refreshes every 10s</span>
-    </footer>
   </div>
 
   <script src="script.js"></script>
