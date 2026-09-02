@@ -46,22 +46,16 @@ const SUPERADMIN_IDS = [
     .filter(Boolean),
 ];
 const isSuperadmin = (userId) => SUPERADMIN_IDS.includes(userId);
-// If set, ONLY members with this role earn XP (e.g. the Spitzvilla event role).
+// If set, ONLY members with this role earn XP (e.g. the Loverswilla event role).
 // Leave empty so everyone earns XP.
 const XP_ROLE_ID = (process.env.XP_ROLE_ID || '').trim();
 // If true (default), ONLY members who are currently paired via /pair earn XP.
-const XP_REQUIRE_PAIR = (process.env.XP_REQUIRE_PAIR ?? 'true') !== 'false';
+const XP_REQUIRE_PAIR = false; // Disabled — all members earn XP regardless of pair status
 
-// True if this member is allowed to earn XP (must be paired, plus optional role gate).
+// True if this member is allowed to earn XP.
 function canEarnXp(member) {
   if (!member) return false;
-  const guildId = member.guild?.id;
-  const userId = member.id ?? member.user?.id;
-  // Pair gate: only members currently paired via /pair earn XP.
-  if (XP_REQUIRE_PAIR) {
-    if (!guildId || !userId || !pairStore.getPartner(guildId, userId)) return false;
-  }
-  // Role gate: if a role is configured, require that too.
+  // Role gate: if a role is configured, require it.
   if (XP_ROLE_ID && !member.roles?.cache?.has(XP_ROLE_ID)) return false;
   return true;
 }
@@ -139,64 +133,6 @@ const commands = [
     name: 'leaderboard',
     description: 'Top members by XP in this server.',
   },
-  {
-    name: 'resetxp',
-    description: 'Reset XP (Administrators and authorized users only).',
-    options: [
-      {
-        type: ApplicationCommandOptionType.Subcommand,
-        name: 'user',
-        description: "Reset a single member's XP to zero.",
-        options: [
-          {
-            type: ApplicationCommandOptionType.User,
-            name: 'target',
-            description: 'Member whose XP to reset',
-            required: true,
-          },
-        ],
-      },
-      {
-        type: ApplicationCommandOptionType.Subcommand,
-        name: 'all',
-        description: 'Reset XP for EVERYONE in this server (start a fresh event).',
-      },
-    ],
-  },
-  {
-    name: 'pair',
-    description: 'Pair two members together as a couple.',
-    options: [
-      {
-        type: ApplicationCommandOptionType.User,
-        name: 'user1',
-        description: 'First member',
-        required: true,
-      },
-      {
-        type: ApplicationCommandOptionType.User,
-        name: 'user2',
-        description: 'Second member',
-        required: true,
-      },
-    ],
-  },
-  {
-    name: 'unpair',
-    description: 'Remove the pairing for a member (either partner works).',
-    options: [
-      {
-        type: ApplicationCommandOptionType.User,
-        name: 'user',
-        description: 'A member in the pair to remove',
-        required: true,
-      },
-    ],
-  },
-  {
-    name: 'pairlist',
-    description: 'Show all current couples in this server.',
-  },
 ];
 
 async function registerCommands(guild) {
@@ -213,6 +149,88 @@ async function registerCommands(guild) {
 // ---------------------------------------------------------------------------
 const msgCooldown = new Map(); // `${guildId}:${userId}` -> last award timestamp
 
+// Sync XP to the website's Turso database
+const WEBSITE_API = 'https://www.loverscafe.online/api/leaderboard';
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ''; // Set in .env — get from admin login
+
+async function syncXpToWebsite(userId, username, displayName, chatXp, voiceXp) {
+  if (!ADMIN_TOKEN) return; // Skip sync if no token configured
+  try {
+    await fetch(WEBSITE_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_TOKEN}` },
+      body: JSON.stringify({
+        action: 'set-xp',
+        discordUserId: userId,
+        chat_xp: chatXp,
+        voice_xp: voiceXp,
+        username: username,
+        display_name: displayName,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch { /* fail silently — don't block XP awarding */ }
+}
+
+// ---------------------------------------------------------------------------
+// Live server settings (fetched from the website, cached ~60s). Lets XP
+// amounts / cooldown / role gates be changed in the dashboard WITHOUT a bot
+// restart — the cache simply expires and the next award uses new values.
+// Falls back to env/const defaults if the fetch fails or a field is missing.
+// ---------------------------------------------------------------------------
+const SETTINGS_TTL_MS = 60 * 1000;
+let cachedXpSettings = null;
+let cachedXpAt = 0;
+
+async function getXpSettings() {
+  const now = Date.now();
+  if (cachedXpSettings && now - cachedXpAt < SETTINGS_TTL_MS) return cachedXpSettings;
+  if (!ADMIN_TOKEN) return null;
+  try {
+    const res = await fetch(WEBSITE_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_TOKEN}` },
+      body: JSON.stringify({ action: 'bot-settings' }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.xp) {
+        cachedXpSettings = data.xp;
+        cachedXpAt = now;
+      }
+    }
+  } catch { /* keep stale cache / fall back to defaults */ }
+  return cachedXpSettings;
+}
+
+/** Effective message cooldown (ms): settings override → env/const default. */
+function effectiveMessageCooldownMs() {
+  const s = cachedXpSettings;
+  const sec = s && Number.isFinite(Number(s.messageCooldown)) ? Number(s.messageCooldown) : null;
+  return sec != null ? sec * 1000 : MESSAGE_COOLDOWN_MS;
+}
+
+/** Effective per-message XP: settings messageXp → env/const random range. */
+function effectiveMessageXp() {
+  const s = cachedXpSettings;
+  if (s && Number.isFinite(Number(s.messageXp))) return Number(s.messageXp);
+  return randomInt(XP_MSG_MIN, XP_MSG_MAX);
+}
+
+/** Effective per-voice-minute XP: settings voiceXp → env/const default. */
+function effectiveVoiceXp() {
+  const s = cachedXpSettings;
+  if (s && Number.isFinite(Number(s.voiceXp))) return Number(s.voiceXp);
+  return XP_PER_VOICE_MINUTE;
+}
+
+/** Whether XP is globally enabled (settings.xp.enabled; default true). */
+function xpEnabled() {
+  const s = cachedXpSettings;
+  return !s || s.enabled !== false;
+}
+
 function handleXpGain(guild, member, amount, kind) {
   const user = member.user || member;
   const displayName = member.displayName || user.username;
@@ -224,28 +242,30 @@ function handleXpGain(guild, member, amount, kind) {
     kind,
   );
 
+  // Sync to website database
+  const stats = store.getUser(guild.id, user.id);
+  syncXpToWebsite(user.id, user.username, displayName, stats.chatXp, stats.voiceXp);
+
   const levelBefore = levelForXp(before).level;
   const levelAfter = levelForXp(after).level;
-  if (levelAfter > levelBefore && LEVEL_UP_ANNOUNCE) {
-    // DM the member privately instead of announcing in the server channel.
-    user
-      .send(`🎉 You reached **Level ${levelAfter}** in **${guild.name}**! Keep chatting and hopping into voice to climb higher. ☕`)
-      .catch(() => {}); // user may have DMs disabled — fail silently
-  }
+  // Level up announcements disabled
 }
 
 function awardMessageXp(message) {
+  if (!xpEnabled()) return; // XP globally disabled in dashboard
   if (!canEarnXp(message.member)) return; // role gate
   const key = `${message.guild.id}:${message.author.id}`;
   const now = Date.now();
   const last = msgCooldown.get(key) || 0;
-  if (now - last < MESSAGE_COOLDOWN_MS) return;
+  if (now - last < effectiveMessageCooldownMs()) return;
   msgCooldown.set(key, now);
-  handleXpGain(message.guild, message.member || message.author, randomInt(XP_MSG_MIN, XP_MSG_MAX), 'chat');
+  handleXpGain(message.guild, message.member || message.author, effectiveMessageXp(), 'chat');
 }
 
 // Award voice XP once per minute to everyone actively sitting in a voice channel.
 function tickVoiceXp() {
+  if (!xpEnabled()) return; // XP globally disabled in dashboard
+  const voiceXp = effectiveVoiceXp();
   for (const [, guild] of client.guilds.cache) {
     for (const [, voiceState] of guild.voiceStates.cache) {
       if (!voiceState.channelId) continue; // not in voice
@@ -254,7 +274,7 @@ function tickVoiceXp() {
       if (!member || member.user.bot) continue;
       if (voiceState.selfDeaf || voiceState.deaf) continue; // deafened = not participating
       if (!canEarnXp(member)) continue; // role gate
-      handleXpGain(guild, member, XP_PER_VOICE_MINUTE, 'voice');
+      handleXpGain(guild, member, voiceXp, 'voice');
     }
   }
 }
@@ -353,6 +373,11 @@ client.once('clientReady', async () => {
   }
   setInterval(tickVoiceXp, VOICE_INTERVAL_MS);
 
+  // Prime + periodically refresh live XP settings from the dashboard so
+  // changes take effect without a bot restart (cache TTL is also enforced).
+  getXpSettings().catch(() => {});
+  setInterval(() => { getXpSettings().catch(() => {}); }, SETTINGS_TTL_MS);
+
   // Cache invites for tracking
   for (const [, guild] of client.guilds.cache) {
     try {
@@ -366,7 +391,7 @@ client.once('clientReady', async () => {
   console.log('📨 Invite tracking ready');
 });
 
-// Register commands when the bot is invited to a new server (e.g. Spitzvilla).
+// Register commands when the bot is invited to a new server (e.g. Loverswilla).
 client.on('guildCreate', (guild) => registerCommands(guild));
 
 // ---------------------------------------------------------------------------
@@ -484,6 +509,31 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
 
+  // Refresh leaderboard button
+  if (interaction.isButton() && interaction.customId === 'refresh_leaderboard') {
+    await interaction.deferUpdate();
+    try {
+      const { screenshotLeaderboard } = require('./urlbox-screenshot');
+      const imgBuffer = await screenshotLeaderboard(true); // cacheBust=true for refresh
+      const { AttachmentBuilder } = require('discord.js');
+      const attachment = new AttachmentBuilder(imgBuffer, { name: 'leaderboard.png' });
+      const lbRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('refresh_leaderboard')
+          .setLabel('🔄 Refresh')
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setLabel('View Full Leaderboard')
+          .setStyle(ButtonStyle.Link)
+          .setURL('https://www.loverscafe.online/leaderboard')
+      );
+      await interaction.editReply({ files: [attachment], components: [lbRow], embeds: [] });
+    } catch (err) {
+      console.error('Refresh leaderboard error:', err.message);
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
   if (!interaction.inGuild()) {
     return interaction.reply({ content: 'Use this command inside a server.', ephemeral: true });
@@ -519,172 +569,51 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
     }
 
-    if (interaction.commandName === 'leaderboard') {
-      const couples = buildCoupleLeaderboard(guildId);
-      if (couples.length === 0) {
-        return interaction.reply('No duos on the board yet — use `/pair` to add some! 💞');
+        if (interaction.commandName === 'leaderboard') {
+      await interaction.deferReply();
+      try {
+        const { screenshotLeaderboard } = require('./urlbox-screenshot');
+        const imgBuffer = await screenshotLeaderboard();
+        const { AttachmentBuilder } = require('discord.js');
+        const attachment = new AttachmentBuilder(imgBuffer, { name: 'leaderboard.png' });
+        const lbRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('refresh_leaderboard')
+            .setLabel('🔄 Refresh')
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setLabel('View Full Leaderboard')
+            .setStyle(ButtonStyle.Link)
+            .setURL('https://www.loverscafe.online/leaderboard')
+        );
+        await interaction.editReply({ files: [attachment], components: [lbRow] });
+      } catch (lbErr) {
+        console.error('Leaderboard error:', lbErr.message);
+        await interaction.editReply('Could not generate leaderboard image. Visit https://www.loverscafe.online/leaderboard');
       }
-      const medals = ['🥇', '🥈', '🥉'];
-      const lines = couples.slice(0, 10).map((c, i) => {
-        const place = medals[i] || `**#${i + 1}**`;
-        const [m1, m2] = c.members;
-        return `${place}  <@${m1.id}> ❤️ <@${m2.id}>\n **${c.totalXp.toLocaleString()} XP**`;
-      });
-      const embed = new EmbedBuilder()
-        .setColor(0xf472b6)
-        .setTitle(`🏆 ${interaction.guild.name} — Duo XP Leaderboard`)
-        .setDescription(lines.join('\n'))
-        .setFooter({ text: 'Ranked by combined XP • see the full breakdown on the website' });
-      return interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
+      return;
     }
 
-    if (interaction.commandName === 'resetxp') {
-      const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator);
-      const isAuthorized =
-        isAdmin || isSuperadmin(interaction.user.id) || RESET_USER_IDS.includes(interaction.user.id);
-      if (!isAuthorized) {
-        return interaction.reply({
-          content: "⛔ You don't have permission to reset XP.",
-          ephemeral: true,
-        });
-      }
-
-      const sub = interaction.options.getSubcommand();
-      if (sub === 'user') {
-        const target = interaction.options.getUser('target');
-        store.resetUser(guildId, target.id);
-        return interaction.reply(`✅ Reset <@${target.id}>'s XP to zero.`);
-      }
-      if (sub === 'all') {
-        store.resetGuild(guildId);
-        return interaction.reply('✅ Reset XP for **everyone** in this server.');
-      }
-    }
 
     if (interaction.commandName === 'pair') {
-      if (!canManagePairs(interaction)) {
-        return interaction.reply({
-          content: '⛔ You need the **Manage Roles** permission to pair members.',
-          ephemeral: true,
-        });
-      }
-      const u1 = interaction.options.getUser('user1');
-      const u2 = interaction.options.getUser('user2');
-      if (u1.id === u2.id) {
-        return interaction.reply({
-          content: "❌ You can't pair someone with themselves.",
-          ephemeral: true,
-        });
-      }
-      if (u1.bot || u2.bot) {
-        return interaction.reply({ content: '❌ Bots cannot be paired.', ephemeral: true });
-      }
-      const cur1 = pairStore.getPartner(guildId, u1.id);
-      if (cur1) {
-        return interaction.reply({
-          content: `❌ <@${u1.id}> is already paired with <@${cur1}>. Unpair them first.`,
-          ephemeral: true,
-        });
-      }
-      const cur2 = pairStore.getPartner(guildId, u2.id);
-      if (cur2) {
-        return interaction.reply({
-          content: `❌ <@${u2.id}> is already paired with <@${cur2}>. Unpair them first.`,
-          ephemeral: true,
-        });
-      }
-      // Don't send a request while one is already pending for either user.
-      for (const req of pendingPairRequests.values()) {
-        if (req.guildId !== guildId) continue;
-        if ([req.user1.id, req.user2.id].some((id) => id === u1.id || id === u2.id)) {
-          return interaction.reply({
-            content: '❌ One of them already has a pending pair request. Wait for it to resolve first.',
-            ephemeral: true,
-          });
-        }
-      }
-
-      const reqId = crypto.randomUUID();
-      const request = {
-        guildId,
-        guildName: interaction.guild.name,
-        user1: u1,
-        user2: u2,
-        accepted: new Set(),
-      };
-      request.timeout = setTimeout(() => {
-        if (!pendingPairRequests.has(reqId)) return;
-        pendingPairRequests.delete(reqId);
-        interaction
-          .editReply({ embeds: [pairRequestEmbed(request, 'expired')], components: [] })
-          .catch(() => {});
-      }, PAIR_REQUEST_TTL_MS);
-      pendingPairRequests.set(reqId, request);
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`pairreq:accept:${reqId}`)
-          .setLabel('Accept')
-          .setStyle(ButtonStyle.Success)
-          .setEmoji('✅'),
-        new ButtonBuilder()
-          .setCustomId(`pairreq:deny:${reqId}`)
-          .setLabel('Deny')
-          .setStyle(ButtonStyle.Danger)
-          .setEmoji('❌'),
-      );
-
       return interaction.reply({
-        content: `<@${u1.id}> <@${u2.id}> — you've been proposed as a couple! Both of you must **Accept** below.`,
-        embeds: [pairRequestEmbed(request, 'pending')],
-        components: [row],
-        allowedMentions: { users: [u1.id, u2.id] },
+        content: '⚠️ Pairing is now managed via the admin website: https://www.loverscafe.online/admin/splitsvilla',
+        ephemeral: true,
       });
     }
 
     if (interaction.commandName === 'unpair') {
-      if (!canManagePairs(interaction)) {
-        return interaction.reply({
-          content: '⛔ You need the **Manage Roles** permission to unpair members.',
-          ephemeral: true,
-        });
-      }
-      const target = interaction.options.getUser('user');
-      const partner = pairStore.getPartner(guildId, target.id);
-      if (!partner) {
-        return interaction.reply({
-          content: `❌ <@${target.id}> isn't paired with anyone.`,
-          ephemeral: true,
-        });
-      }
-      pairStore.unpair(guildId, target.id);
-
-      // DM both users about unpairing
-      const unpairDm = (otherId) => ({
-        color: 0x6b7280,
-        title: '💔 COUPLE STATUS UPDATED',
-        description: `You are no longer paired with <@${otherId}> in the **${interaction.guild.name}** event.\n\nYour previously earned XP has not been deleted.`,
-      });
-      client.users.fetch(target.id).then((u) => u.send({ embeds: [unpairDm(partner)] })).catch(() => {});
-      client.users.fetch(partner).then((u) => u.send({ embeds: [unpairDm(target.id)] })).catch(() => {});
-
       return interaction.reply({
-        content: `💔 <@${target.id}> and <@${partner}> are no longer paired.`,
-        allowedMentions: { users: [] },
+        content: '⚠️ Unpairing is now managed via the admin website: https://www.loverscafe.online/admin/splitsvilla',
+        ephemeral: true,
       });
     }
 
     if (interaction.commandName === 'pairlist') {
-      const pairs = pairStore.listPairs(guildId);
-      if (pairs.length === 0) {
-        return interaction.reply('No duos yet — use `/pair` to create the first one! 💞');
-      }
-      const lines = pairs.map(([a, b], i) => `**${i + 1}.** <@${a}> 💕 <@${b}>`);
-      const embed = new EmbedBuilder()
-        .setColor(0xf472b6)
-        .setTitle(`💞 ${interaction.guild.name} — Duos`)
-        .setDescription(lines.join('\n').slice(0, 4000));
-      return interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
+      return interaction.reply({
+        content: '💞 View all couples on the live leaderboard: https://www.loverscafe.online/leaderboard',
+        ephemeral: true,
+      });
     }
   } catch (err) {
     console.error('Interaction error:', err);
