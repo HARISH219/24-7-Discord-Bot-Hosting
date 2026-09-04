@@ -147,6 +147,34 @@ async function registerCommands(guild) {
 // ---------------------------------------------------------------------------
 // XP awarding
 // ---------------------------------------------------------------------------
+const LEADERBOARD_AUTO_INTERVAL_MS = 10 * 60 * 1000; // 10 min auto-reload
+// Stores the most recently posted leaderboard message so the auto-reload
+// and the refresh button always edit the SAME message in place.
+let lastLbMessage = null; // { channelId, messageId }
+
+/** Generate a fresh leaderboard screenshot and edit the stored message. */
+async function autoReloadLeaderboard() {
+  if (!lastLbMessage) return;
+  try {
+    const { screenshotLeaderboard } = require('./urlbox-screenshot');
+    const { AttachmentBuilder } = require('discord.js');
+    const imgBuffer = await screenshotLeaderboard(true);
+    const attachment = new AttachmentBuilder(imgBuffer, { name: 'leaderboard.png' });
+    const lbRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('refresh_leaderboard').setLabel('🔄 Refresh').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setLabel('View Full Leaderboard').setStyle(ButtonStyle.Link).setURL('https://www.loverscafe.online/leaderboard'),
+    );
+    const channel = await client.channels.fetch(lastLbMessage.channelId).catch(() => null);
+    if (!channel) return;
+    const msg = await channel.messages.fetch(lastLbMessage.messageId).catch(() => null);
+    if (!msg) { lastLbMessage = null; return; } // message was deleted — reset
+    await msg.edit({ files: [attachment], components: [lbRow], embeds: [] });
+    console.log('🔄 Leaderboard auto-reloaded');
+  } catch (err) {
+    console.error('Auto-reload leaderboard error:', err.message);
+  }
+}
+
 const msgCooldown = new Map(); // `${guildId}:${userId}` -> last award timestamp
 
 // Sync XP to the website's Turso database
@@ -373,6 +401,9 @@ client.once('clientReady', async () => {
   }
   setInterval(tickVoiceXp, VOICE_INTERVAL_MS);
 
+  // Auto-reload the leaderboard message every 10 minutes.
+  setInterval(autoReloadLeaderboard, LEADERBOARD_AUTO_INTERVAL_MS);
+
   // Prime + periodically refresh live XP settings from the dashboard so
   // changes take effect without a bot restart (cache TTL is also enforced).
   getXpSettings().catch(() => {});
@@ -527,7 +558,9 @@ client.on('interactionCreate', async (interaction) => {
           .setStyle(ButtonStyle.Link)
           .setURL('https://www.loverscafe.online/leaderboard')
       );
-      await interaction.editReply({ files: [attachment], components: [lbRow], embeds: [] });
+      const updatedMsg = await interaction.editReply({ files: [attachment], components: [lbRow], embeds: [] });
+      // Keep the stored reference up to date so auto-reload edits this message.
+      if (updatedMsg) lastLbMessage = { channelId: updatedMsg.channelId, messageId: updatedMsg.id };
     } catch (err) {
       console.error('Refresh leaderboard error:', err.message);
     }
@@ -586,7 +619,9 @@ client.on('interactionCreate', async (interaction) => {
             .setStyle(ButtonStyle.Link)
             .setURL('https://www.loverscafe.online/leaderboard')
         );
-        await interaction.editReply({ files: [attachment], components: [lbRow] });
+        const lbReply = await interaction.editReply({ files: [attachment], components: [lbRow] });
+        // Store so the 10-min auto-reload knows which message to edit.
+        if (lbReply) lastLbMessage = { channelId: lbReply.channelId, messageId: lbReply.id };
       } catch (lbErr) {
         console.error('Leaderboard error:', lbErr.message);
         await interaction.editReply('Could not generate leaderboard image. Visit https://www.loverscafe.online/leaderboard');
