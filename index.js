@@ -49,6 +49,46 @@ const isSuperadmin = (userId) => SUPERADMIN_IDS.includes(userId);
 // If set, ONLY members with this role earn XP (e.g. the Loverswilla event role).
 // Leave empty so everyone earns XP.
 const XP_ROLE_ID = (process.env.XP_ROLE_ID || '').trim();
+
+// ---------------------------------------------------------------------------
+// OTP Storage for Discord ID verification (fallback when bot cannot DM)
+// ---------------------------------------------------------------------------
+const OTP_TTL_MS = 15 * 60 * 1000; // 15 minutes expiry
+const otpStore = new Map(); // discordUserId -> { otp, createdAt, username }
+
+function generateOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+}
+
+function storeOtp(discordUserId, username) {
+  const otp = generateOtp();
+  otpStore.set(discordUserId, {
+    otp,
+    createdAt: Date.now(),
+    username,
+  });
+  // Auto-cleanup after TTL
+  setTimeout(() => {
+    otpStore.delete(discordUserId);
+  }, OTP_TTL_MS);
+  return otp;
+}
+
+function verifyOtp(discordUserId, inputOtp) {
+  const record = otpStore.get(discordUserId);
+  if (!record) return { valid: false, reason: 'No OTP found or expired' };
+  if (Date.now() - record.createdAt > OTP_TTL_MS) {
+    otpStore.delete(discordUserId);
+    return { valid: false, reason: 'OTP expired' };
+  }
+  if (record.otp !== inputOtp) {
+    return { valid: false, reason: 'Invalid OTP' };
+  }
+  otpStore.delete(discordUserId); // One-time use
+  return { valid: true };
+}
+
+// ---------------------------------------------------------------------------
 // If true (default), ONLY members who are currently paired via /pair earn XP.
 const XP_REQUIRE_PAIR = false; // Disabled — all members earn XP regardless of pair status
 
@@ -516,7 +556,24 @@ client.on('messageCreate', async (message) => {
         await message.reply(`✅ DM sent successfully to **${targetUser.username}** (\`${targetUserId}\`)`);
         console.log(`🧪 Test DM sent to ${targetUser.username} (${targetUserId}) by ${message.author.username}`);
       } catch (error) {
-        // Handle errors safely without exposing sensitive info
+        // DM failed — generate OTP fallback
+        const targetUser = await client.users.fetch(targetUserId).catch(() => null);
+        const username = targetUser ? targetUser.username : 'Unknown User';
+        const otp = storeOtp(targetUserId, username);
+        
+        // Log OTP prominently in console
+        console.log('');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('🔐 OTP GENERATED (DM FAILED)');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(`👤 Discord User: ${username} (${targetUserId})`);
+        console.log(`🔢 OTP: ${otp}`);
+        console.log(`⏰ Valid for: 15 minutes`);
+        console.log(`📝 User can request this from organizers`);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('');
+        
+        // Build error message
         let errorMsg = '❌ Failed to send DM.';
         
         if (error.code === 50007) {
@@ -530,9 +587,36 @@ client.on('messageCreate', async (message) => {
         } else {
           errorMsg += ' **Reason:** Unknown error.';
         }
+        
+        errorMsg += `\n\n✅ **Fallback OTP generated and logged.**\nUser **${username}** can ask organizers for the OTP from the logs.`;
 
         await message.reply(errorMsg);
         console.error(`🧪 Test DM failed for ${targetUserId}: ${error.message} (code: ${error.code || 'none'})`);
+      }
+      return;
+    }
+
+    // !verifyotp <discord_user_id> <otp> — Harish-only OTP verification test
+    if (command === 'verifyotp') {
+      // Permission check: only Harish can use this command
+      if (message.author.id !== '359747431036092417') {
+        return message.reply('⛔ This command is owner-only.');
+      }
+
+      const targetUserId = args[0];
+      const inputOtp = args[1];
+      
+      if (!targetUserId || !inputOtp) {
+        return message.reply('❌ Usage: `!verifyotp <discord_user_id> <otp>`\nExample: `!verifyotp 847461074348933151 123456`');
+      }
+
+      const result = verifyOtp(targetUserId, inputOtp);
+      if (result.valid) {
+        await message.reply(`✅ OTP verified successfully for user ID \`${targetUserId}\``);
+        console.log(`✅ OTP verified for ${targetUserId} by ${message.author.username}`);
+      } else {
+        await message.reply(`❌ OTP verification failed: ${result.reason}`);
+        console.log(`❌ OTP verification failed for ${targetUserId}: ${result.reason}`);
       }
       return;
     }
@@ -784,6 +868,42 @@ app.get('/api/health', (req, res) => {
     botUsername: client.user?.tag || 'Not connected',
     messageCount: messageHistory.length,
   });
+});
+
+// OTP verification endpoint for Discord ID linking
+app.post('/api/discord/verify-otp', express.json(), (req, res) => {
+  const { discordUserId, otp } = req.body;
+  
+  if (!discordUserId || !otp) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'discordUserId and otp required' 
+    });
+  }
+
+  // Validate Discord ID format
+  if (!/^\d{17,19}$/.test(discordUserId)) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid Discord ID format' 
+    });
+  }
+
+  const result = verifyOtp(discordUserId, otp);
+  
+  if (result.valid) {
+    console.log(`✅ OTP verified via API for Discord ID: ${discordUserId}`);
+    return res.json({ 
+      success: true, 
+      message: 'OTP verified successfully' 
+    });
+  } else {
+    console.log(`❌ OTP verification failed via API for ${discordUserId}: ${result.reason}`);
+    return res.status(400).json({ 
+      success: false, 
+      error: result.reason 
+    });
+  }
 });
 
 // Couple leaderboard data for the web UI — one board per server the bot is in.
