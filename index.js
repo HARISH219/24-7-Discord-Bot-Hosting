@@ -799,7 +799,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
 
-    if (command === 'pair') {
+    if (interaction.commandName === 'pair') {
       return interaction.reply({
         content: '⚠️ Pairing is now managed via the admin website: https://www.loverscafe.online/admin/splitsvilla',
         flags: MessageFlags.Ephemeral,
@@ -821,40 +821,55 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.commandName === 'tempotp') {
-      // Permission check: only Harish (owner) can use this command
-      if (interaction.user.id !== '359747431036092417') {
+      try {
+        console.log('[TEMPOTP] Command received from user:', interaction.user.id, interaction.user.username);
+        
+        // Permission check: only Harish (owner) can use this command
+        if (interaction.user.id !== '359747431036092417') {
+          console.log('[TEMPOTP] Permission denied for user:', interaction.user.id);
+          return interaction.reply({
+            content: '⛔ This command is owner-only.',
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        console.log('[TEMPOTP] Getting pending OTPs...');
+        const pending = getAllPendingOtps();
+        console.log('[TEMPOTP] Found', pending.length, 'pending OTPs');
+
+        if (pending.length === 0) {
+          return interaction.reply({
+            content: '✅ No pending temporary OTPs. All users either received DMs or their OTPs have expired.',
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        // Build embed with all pending OTPs
+        const embed = new EmbedBuilder()
+          .setColor(0xf472b6)
+          .setTitle('🔐 Pending Temporary OTPs')
+          .setDescription(`These users couldn't receive DMs and need manual OTP delivery.\n\u200b`)
+          .setFooter({ text: `${pending.length} user${pending.length === 1 ? '' : 's'} waiting for OTP` });
+
+        // Add fields for each pending OTP
+        for (const { username, otp, expiresIn } of pending) {
+          console.log('[TEMPOTP] Adding OTP for user:', username, 'OTP:', otp);
+          embed.addFields({
+            name: `👤 ${username}`,
+            value: `**OTP:** \`${otp}\`\n⏰ Expires in ${expiresIn} minute${expiresIn === 1 ? '' : 's'}`,
+            inline: false,
+          });
+        }
+
+        console.log('[TEMPOTP] Sending reply...');
+        return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+      } catch (error) {
+        console.error('[TEMPOTP] Error:', error);
         return interaction.reply({
-          content: '⛔ This command is owner-only.',
+          content: '❌ Error retrieving OTPs: ' + (error instanceof Error ? error.message : String(error)),
           flags: MessageFlags.Ephemeral,
         });
       }
-
-      const pending = getAllPendingOtps();
-
-      if (pending.length === 0) {
-        return interaction.reply({
-          content: '✅ No pending temporary OTPs. All users either received DMs or their OTPs have expired.',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      // Build embed with all pending OTPs
-      const embed = new EmbedBuilder()
-        .setColor(0xf472b6)
-        .setTitle('🔐 Pending Temporary OTPs')
-        .setDescription(`These users couldn't receive DMs and need manual OTP delivery.\n\u200b`)
-        .setFooter({ text: `${pending.length} user${pending.length === 1 ? '' : 's'} waiting for OTP` });
-
-      // Add fields for each pending OTP
-      for (const { username, otp, expiresIn } of pending) {
-        embed.addFields({
-          name: `👤 ${username}`,
-          value: `**OTP:** \`${otp}\`\n⏰ Expires in ${expiresIn} minute${expiresIn === 1 ? '' : 's'}`,
-          inline: false,
-        });
-      }
-
-      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
   } catch (err) {
     console.error('Interaction error:', err);
