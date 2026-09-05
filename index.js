@@ -521,6 +521,8 @@ client.on('messageCreate', async (message) => {
         
         if (error.code === 50007) {
           errorMsg += ' **Reason:** Cannot send messages to this user (they may have DMs disabled or have blocked the bot).';
+        } else if (error.code === 50278) {
+          errorMsg += ' **Reason:** Discord spam prevention - the bot must wait before DMing this user. Try again in a few minutes, or have them message the bot first.';
         } else if (error.code === 10013) {
           errorMsg += ' **Reason:** Unknown user.';
         } else if (error.code) {
