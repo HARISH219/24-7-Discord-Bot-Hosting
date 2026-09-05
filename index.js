@@ -8,6 +8,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
 } = require('discord.js');
 const crypto = require('crypto');
 const express = require('express');
@@ -656,14 +657,14 @@ client.on('interactionCreate', async (interaction) => {
     if (!request) {
       return interaction.reply({
         content: '⌛ This pairing request is no longer active.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
     const { user1, user2, guildId: reqGuildId } = request;
     if (interaction.user.id !== user1.id && interaction.user.id !== user2.id) {
       return interaction.reply({
         content: '⛔ This request is not for you.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -734,7 +735,10 @@ client.on('interactionCreate', async (interaction) => {
 
   if (!interaction.isChatInputCommand()) return;
   if (!interaction.inGuild()) {
-    return interaction.reply({ content: 'Use this command inside a server.', ephemeral: true });
+    return interaction.reply({ 
+      content: 'Use this command inside a server.', 
+      flags: MessageFlags.Ephemeral 
+    });
   }
 
   const guildId = interaction.guildId;
@@ -795,24 +799,24 @@ client.on('interactionCreate', async (interaction) => {
     }
 
 
-    if (interaction.commandName === 'pair') {
+    if (command === 'pair') {
       return interaction.reply({
         content: '⚠️ Pairing is now managed via the admin website: https://www.loverscafe.online/admin/splitsvilla',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     if (interaction.commandName === 'unpair') {
       return interaction.reply({
         content: '⚠️ Unpairing is now managed via the admin website: https://www.loverscafe.online/admin/splitsvilla',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     if (interaction.commandName === 'pairlist') {
       return interaction.reply({
         content: '💞 View all couples on the live leaderboard: https://www.loverscafe.online/leaderboard',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -821,7 +825,7 @@ client.on('interactionCreate', async (interaction) => {
       if (interaction.user.id !== '359747431036092417') {
         return interaction.reply({
           content: '⛔ This command is owner-only.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -830,7 +834,7 @@ client.on('interactionCreate', async (interaction) => {
       if (pending.length === 0) {
         return interaction.reply({
           content: '✅ No pending temporary OTPs. All users either received DMs or their OTPs have expired.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -850,12 +854,12 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
   } catch (err) {
     console.error('Interaction error:', err);
     if (!interaction.replied && !interaction.deferred) {
-      interaction.reply({ content: 'Something went wrong.', ephemeral: true }).catch(() => {});
+      interaction.reply({ content: 'Something went wrong.', flags: MessageFlags.Ephemeral }).catch(() => {});
     }
   }
 });
@@ -926,7 +930,52 @@ app.get('/api/health', (req, res) => {
     status: 'online',
     botUsername: client.user?.tag || 'Not connected',
     messageCount: messageHistory.length,
+    endpoints: {
+      health: '/api/health',
+      sendOtpFallback: '/api/discord/send-otp-fallback',
+      verifyOtp: '/api/discord/verify-otp',
+      testOtp: '/api/discord/test-otp',
+    },
   });
+});
+
+// Test endpoint for OTP system (no auth required for testing)
+app.post('/api/discord/test-otp', express.json(), async (req, res) => {
+  console.log('[TEST OTP] Test request received');
+  
+  const testUserId = 'TEST_' + Date.now();
+  const testUsername = 'TestUser';
+  
+  try {
+    // Generate test OTP
+    const otp = storeOtp(testUserId, testUsername);
+    console.log('[TEST OTP] Generated test OTP:', otp, 'for user:', testUserId);
+    
+    // Verify it works
+    const verifyResult = verifyOtp(testUserId, otp);
+    console.log('[TEST OTP] Verification result:', verifyResult);
+    
+    // Try to verify again (should fail - one-time use)
+    const verifyAgain = verifyOtp(testUserId, otp);
+    console.log('[TEST OTP] Second verification (should fail):', verifyAgain);
+    
+    return res.json({
+      success: true,
+      message: 'OTP system test completed',
+      results: {
+        otpGenerated: otp,
+        firstVerification: verifyResult.valid,
+        secondVerification: verifyAgain.valid,
+        oneTimeUseWorking: verifyResult.valid && !verifyAgain.valid,
+      },
+    });
+  } catch (error) {
+    console.error('[TEST OTP] Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 });
 
 // OTP verification endpoint for Discord ID linking
@@ -967,17 +1016,25 @@ app.post('/api/discord/verify-otp', express.json(), (req, res) => {
 
 // OTP fallback generation endpoint (called when DM fails during registration)
 app.post('/api/discord/send-otp-fallback', express.json(), async (req, res) => {
+  console.log('[FALLBACK OTP] Request received');
+  console.log('[FALLBACK OTP] Body:', JSON.stringify(req.body));
+  
   const { discordUserId, discordUsername } = req.body;
   
   if (!discordUserId) {
+    console.log('[FALLBACK OTP] ERROR: discordUserId missing');
     return res.status(400).json({ 
       success: false, 
       error: 'discordUserId required' 
     });
   }
 
+  console.log('[FALLBACK OTP] Discord ID:', discordUserId);
+  console.log('[FALLBACK OTP] Username:', discordUsername);
+
   // Validate Discord ID format
   if (!/^\d{17,19}$/.test(discordUserId)) {
+    console.log('[FALLBACK OTP] ERROR: Invalid Discord ID format');
     return res.status(400).json({ 
       success: false, 
       error: 'Invalid Discord ID format' 
@@ -985,12 +1042,16 @@ app.post('/api/discord/send-otp-fallback', express.json(), async (req, res) => {
   }
 
   try {
+    console.log('[FALLBACK OTP] Fetching Discord user...');
     // Fetch user info for better logs
     const targetUser = await client.users.fetch(discordUserId).catch(() => null);
     const username = discordUsername || targetUser?.username || 'Unknown User';
+    console.log('[FALLBACK OTP] Resolved username:', username);
     
+    console.log('[FALLBACK OTP] Generating OTP...');
     // Generate and store OTP
     const otp = storeOtp(discordUserId, username);
+    console.log('[FALLBACK OTP] OTP generated:', otp);
     
     // Log OTP prominently
     console.log('');
@@ -1004,12 +1065,14 @@ app.post('/api/discord/send-otp-fallback', express.json(), async (req, res) => {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('');
     
+    console.log('[FALLBACK OTP] Sending response...');
     return res.json({ 
       success: true, 
       otp: otp, // Return OTP so website can log it in admin logs
       message: 'OTP generated and logged for organizers' 
     });
   } catch (error) {
+    console.error('[FALLBACK OTP] Exception:', error);
     console.error(`❌ Failed to generate fallback OTP for ${discordUserId}:`, error);
     return res.status(500).json({ 
       success: false, 
