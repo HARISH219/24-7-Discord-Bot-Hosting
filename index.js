@@ -477,8 +477,65 @@ client.on('guildMemberAdd', async (member) => {
   }
 });
 
-client.on('messageCreate', (message) => {
+client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
+
+  // Handle owner-only prefix commands
+  if (message.content.startsWith('!')) {
+    const args = message.content.slice(1).trim().split(/\s+/);
+    const command = args.shift()?.toLowerCase();
+
+    // !testdm <discord_user_id> — Harish-only DM test command
+    if (command === 'testdm') {
+      // Permission check: only Harish can use this command
+      if (message.author.id !== '359747431036092417') {
+        return message.reply('⛔ This command is owner-only.');
+      }
+
+      const targetUserId = args[0];
+      if (!targetUserId) {
+        return message.reply('❌ Usage: `!testdm <discord_user_id>`\nExample: `!testdm 359747431036092417`');
+      }
+
+      // Validate Discord ID format (snowflake: 17-19 digits)
+      if (!/^\d{17,19}$/.test(targetUserId)) {
+        return message.reply('❌ Invalid Discord ID. Must be a 17-19 digit numeric snowflake.');
+      }
+
+      try {
+        // Attempt to fetch the user
+        const targetUser = await client.users.fetch(targetUserId).catch(() => null);
+        if (!targetUser) {
+          return message.reply(`❌ Could not find user with ID \`${targetUserId}\`. They may not share any servers with the bot.`);
+        }
+
+        // Attempt to send DM
+        await targetUser.send('🧪 Test DM from LoversVilla');
+        
+        // Success response
+        await message.reply(`✅ DM sent successfully to **${targetUser.username}** (\`${targetUserId}\`)`);
+        console.log(`🧪 Test DM sent to ${targetUser.username} (${targetUserId}) by ${message.author.username}`);
+      } catch (error) {
+        // Handle errors safely without exposing sensitive info
+        let errorMsg = '❌ Failed to send DM.';
+        
+        if (error.code === 50007) {
+          errorMsg += ' **Reason:** Cannot send messages to this user (they may have DMs disabled or have blocked the bot).';
+        } else if (error.code === 10013) {
+          errorMsg += ' **Reason:** Unknown user.';
+        } else if (error.code) {
+          errorMsg += ` **Discord Error Code:** ${error.code}`;
+        } else {
+          errorMsg += ' **Reason:** Unknown error.';
+        }
+
+        await message.reply(errorMsg);
+        console.error(`🧪 Test DM failed for ${targetUserId}: ${error.message} (code: ${error.code || 'none'})`);
+      }
+      return;
+    }
+  }
+
   awardMessageXp(message); // XP for chatting, any channel
   if (message.channel.id === process.env.CHANNEL_ID) relayMessage(message);
 });
