@@ -906,6 +906,58 @@ app.post('/api/discord/verify-otp', express.json(), (req, res) => {
   }
 });
 
+// OTP fallback generation endpoint (called when DM fails during registration)
+app.post('/api/discord/send-otp-fallback', express.json(), async (req, res) => {
+  const { discordUserId, discordUsername } = req.body;
+  
+  if (!discordUserId) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'discordUserId required' 
+    });
+  }
+
+  // Validate Discord ID format
+  if (!/^\d{17,19}$/.test(discordUserId)) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid Discord ID format' 
+    });
+  }
+
+  try {
+    // Fetch user info for better logs
+    const targetUser = await client.users.fetch(discordUserId).catch(() => null);
+    const username = discordUsername || targetUser?.username || 'Unknown User';
+    
+    // Generate and store OTP
+    const otp = storeOtp(discordUserId, username);
+    
+    // Log OTP prominently
+    console.log('');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔐 REGISTRATION OTP (DM FAILED - USER NEEDS ORGANIZER HELP)');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`👤 Discord User: ${username} (${discordUserId})`);
+    console.log(`🔢 OTP: ${otp}`);
+    console.log(`⏰ Valid for: 15 minutes`);
+    console.log(`📝 User is trying to register - they need this code to continue`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('');
+    
+    return res.json({ 
+      success: true, 
+      message: 'OTP generated and logged for organizers' 
+    });
+  } catch (error) {
+    console.error(`❌ Failed to generate fallback OTP for ${discordUserId}:`, error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Failed to generate OTP' 
+    });
+  }
+});
+
 // Couple leaderboard data for the web UI — one board per server the bot is in.
 app.get('/api/leaderboard', (req, res) => {
   const guilds = [];
