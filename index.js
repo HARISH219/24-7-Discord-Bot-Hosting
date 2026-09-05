@@ -88,6 +88,24 @@ function verifyOtp(discordUserId, inputOtp) {
   return { valid: true };
 }
 
+// Get all pending OTPs (for /tempotp command)
+function getAllPendingOtps() {
+  const now = Date.now();
+  const pending = [];
+  for (const [userId, record] of otpStore.entries()) {
+    if (now - record.createdAt < OTP_TTL_MS) {
+      const expiresIn = Math.ceil((OTP_TTL_MS - (now - record.createdAt)) / 60000); // minutes
+      pending.push({
+        userId,
+        username: record.username,
+        otp: record.otp,
+        expiresIn,
+      });
+    }
+  }
+  return pending;
+}
+
 // ---------------------------------------------------------------------------
 // If true (default), ONLY members who are currently paired via /pair earn XP.
 const XP_REQUIRE_PAIR = false; // Disabled — all members earn XP regardless of pair status
@@ -172,6 +190,10 @@ const commands = [
   {
     name: 'leaderboard',
     description: 'Top members by XP in this server.',
+  },
+  {
+    name: 'tempotp',
+    description: '[ADMIN] View all pending temporary OTPs for registration',
   },
 ];
 
@@ -792,6 +814,43 @@ client.on('interactionCreate', async (interaction) => {
         content: '💞 View all couples on the live leaderboard: https://www.loverscafe.online/leaderboard',
         ephemeral: true,
       });
+    }
+
+    if (interaction.commandName === 'tempotp') {
+      // Permission check: only Harish (owner) can use this command
+      if (interaction.user.id !== '359747431036092417') {
+        return interaction.reply({
+          content: '⛔ This command is owner-only.',
+          ephemeral: true,
+        });
+      }
+
+      const pending = getAllPendingOtps();
+
+      if (pending.length === 0) {
+        return interaction.reply({
+          content: '✅ No pending temporary OTPs. All users either received DMs or their OTPs have expired.',
+          ephemeral: true,
+        });
+      }
+
+      // Build embed with all pending OTPs
+      const embed = new EmbedBuilder()
+        .setColor(0xf472b6)
+        .setTitle('🔐 Pending Temporary OTPs')
+        .setDescription(`These users couldn't receive DMs and need manual OTP delivery.\n\u200b`)
+        .setFooter({ text: `${pending.length} user${pending.length === 1 ? '' : 's'} waiting for OTP` });
+
+      // Add fields for each pending OTP
+      for (const { username, otp, expiresIn } of pending) {
+        embed.addFields({
+          name: `👤 ${username}`,
+          value: `**OTP:** \`${otp}\`\n⏰ Expires in ${expiresIn} minute${expiresIn === 1 ? '' : 's'}`,
+          inline: false,
+        });
+      }
+
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
   } catch (err) {
     console.error('Interaction error:', err);
