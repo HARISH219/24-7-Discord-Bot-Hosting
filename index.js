@@ -947,6 +947,7 @@ app.post('/api/discord/send-otp-fallback', express.json(), async (req, res) => {
     
     return res.json({ 
       success: true, 
+      otp: otp, // Return OTP so website can log it in admin logs
       message: 'OTP generated and logged for organizers' 
     });
   } catch (error) {
