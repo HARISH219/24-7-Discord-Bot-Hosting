@@ -764,7 +764,7 @@ client.on('interactionCreate', async (interaction) => {
           { name: '⭐ Total XP', value: `${xp.toLocaleString()}`, inline: true },
           {
             name: '❤️ Partner',
-            value: partnerId ? `<@${partnerId}>` : '_Not paired — not earning XP_',
+            value: partnerId ? `💕 <@${partnerId}>` : '💙 Single — still earning XP and ranked',
             inline: false,
           },
         );
