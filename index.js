@@ -261,38 +261,9 @@ function makeWebsiteToken() {
   return `${payload}.${signature}`;
 }
 
-let lastSyncError = 0;
-function reportSyncProblem(what) {
-  // Throttle to one line per minute so a persistent outage can't spam the log,
-  // but never fail completely silently again.
-  const now = Date.now();
-  if (now - lastSyncError > 60000) {
-    lastSyncError = now;
-    console.error(`⚠️  XP sync to website failed: ${what}`);
-  }
-}
-
-async function syncXpToWebsite(userId, username, displayName, chatXp, voiceXp) {
-  try {
-    const res = await fetch(WEBSITE_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${makeWebsiteToken()}` },
-      body: JSON.stringify({
-        action: 'set-xp',
-        discordUserId: userId,
-        chat_xp: chatXp,
-        voice_xp: voiceXp,
-        username: username,
-        display_name: displayName,
-      }),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) reportSyncProblem(`HTTP ${res.status}`);
-  } catch (err) {
-    // Never block XP awarding, but do make the failure visible.
-    reportSyncProblem(err?.message || String(err));
-  }
-}
+// XP itself is no longer pushed through the website API — xp-store.js writes it
+// directly to Turso. The token above is still used to READ live XP settings
+// (amounts / cooldown / role gates) from the dashboard.
 
 // ---------------------------------------------------------------------------
 // Live server settings (fetched from the website, cached ~60s). Lets XP
@@ -363,9 +334,8 @@ function handleXpGain(guild, member, amount, kind) {
     kind,
   );
 
-  // Sync to website database
-  const stats = store.getUser(guild.id, user.id);
-  syncXpToWebsite(user.id, user.username, displayName, stats.chatXp, stats.voiceXp);
+  // No website sync needed: the store writes straight to Turso, which is the
+  // same database the leaderboard reads.
 
   const levelBefore = levelForXp(before).level;
   const levelAfter = levelForXp(after).level;
@@ -475,6 +445,12 @@ function buildCoupleLeaderboard(guildId) {
 // ---------------------------------------------------------------------------
 client.once('clientReady', async () => {
   console.log(`✅ Bot logged in as ${client.user.tag}`);
+
+  // Load XP from Turso BEFORE anything can award or read it, otherwise the
+  // first awards would start from 0 and overwrite real totals.
+  await store.init();
+  // Pick up XP changed from the admin dashboard (add-xp / bonus points).
+  setInterval(() => { store.refresh().catch(() => {}); }, 60 * 1000);
   console.log(
     `🎮 XP: ${XP_MSG_MIN}-${XP_MSG_MAX}/msg (cooldown ${MESSAGE_COOLDOWN_MS / 1000}s), ${XP_PER_VOICE_MINUTE}/min in voice`,
   );
