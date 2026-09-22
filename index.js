@@ -242,14 +242,41 @@ const msgCooldown = new Map(); // `${guildId}:${userId}` -> last award timestamp
 
 // Sync XP to the website's Turso database
 const WEBSITE_API = 'https://www.loverscafe.online/api/leaderboard';
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ''; // Set in .env — get from admin login
+
+// The website issues admin tokens that EXPIRE after 24 hours, so a static
+// ADMIN_TOKEN pasted into .env silently stops working a day later and every
+// sync 401s — which is exactly why the site showed everyone on 0 XP. Instead we
+// mint a short-lived token per request using the same scheme the site uses.
+// ADMIN_SECRET must match the website's (it has the same hardcoded fallback).
+const ADMIN_SECRET = process.env.ADMIN_SECRET || 'lc-admin-panel-secret-key-x9k2m';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || process.env.OWNER_USERNAME || 'harish';
+
+function b64url(str) {
+  return Buffer.from(str, 'binary').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function makeWebsiteToken() {
+  const payload = b64url(JSON.stringify({ username: ADMIN_USERNAME, exp: Date.now() + 60 * 60 * 1000 }));
+  const signature = b64url(ADMIN_SECRET + '.' + payload);
+  return `${payload}.${signature}`;
+}
+
+let lastSyncError = 0;
+function reportSyncProblem(what) {
+  // Throttle to one line per minute so a persistent outage can't spam the log,
+  // but never fail completely silently again.
+  const now = Date.now();
+  if (now - lastSyncError > 60000) {
+    lastSyncError = now;
+    console.error(`⚠️  XP sync to website failed: ${what}`);
+  }
+}
 
 async function syncXpToWebsite(userId, username, displayName, chatXp, voiceXp) {
-  if (!ADMIN_TOKEN) return; // Skip sync if no token configured
   try {
-    await fetch(WEBSITE_API, {
+    const res = await fetch(WEBSITE_API, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_TOKEN}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${makeWebsiteToken()}` },
       body: JSON.stringify({
         action: 'set-xp',
         discordUserId: userId,
@@ -260,7 +287,11 @@ async function syncXpToWebsite(userId, username, displayName, chatXp, voiceXp) {
       }),
       signal: AbortSignal.timeout(5000),
     });
-  } catch { /* fail silently — don't block XP awarding */ }
+    if (!res.ok) reportSyncProblem(`HTTP ${res.status}`);
+  } catch (err) {
+    // Never block XP awarding, but do make the failure visible.
+    reportSyncProblem(err?.message || String(err));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -276,11 +307,10 @@ let cachedXpAt = 0;
 async function getXpSettings() {
   const now = Date.now();
   if (cachedXpSettings && now - cachedXpAt < SETTINGS_TTL_MS) return cachedXpSettings;
-  if (!ADMIN_TOKEN) return null;
   try {
     const res = await fetch(WEBSITE_API, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_TOKEN}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${makeWebsiteToken()}` },
       body: JSON.stringify({ action: 'bot-settings' }),
       signal: AbortSignal.timeout(5000),
     });
